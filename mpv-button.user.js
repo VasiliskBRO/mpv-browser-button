@@ -2,7 +2,7 @@
 // @name         mpv browser button
 // @name:ru      Кнопка «mpv» на видео
 // @namespace    https://github.com/VasiliskBRO/mpv-browser-button
-// @version      1.4
+// @version      1.5
 // @description  Button on any video: opens it in mpv from the same moment and pauses it in the browser.
 // @description:ru При наведении на видео появляется кнопка: открывает ролик в mpv с того же места, а в браузере ставит на паузу.
 // @homepageURL  https://github.com/VasiliskBRO/mpv-browser-button
@@ -185,6 +185,20 @@
     return manifests.length ? manifests[manifests.length - 1] : "";
   }
 
+  // Очередь или плейлист YouTube из боковой панели: номера роликов от текущего до конца.
+  // Очередь живёт только в браузере, yt-dlp её не видит — поэтому передаём номера сами.
+  function youtubeQueue() {
+    if (!/(^|\.)youtube\.com$/.test(location.hostname)) return [];
+    const current = new URLSearchParams(location.search).get("v");
+    const ids = [];
+    for (const a of document.querySelectorAll("ytd-watch-flexy ytd-playlist-panel-video-renderer a#wc-endpoint")) {
+      const id = new URL(a.href, location.href).searchParams.get("v");
+      if (/^[\w-]{11}$/.test(id || "") && !ids.includes(id)) ids.push(id);
+    }
+    const from = ids.indexOf(current);
+    return from < 0 ? [] : ids.slice(from, from + 500);
+  }
+
   function openInMpv() {
     const v = target;
     if (!v) return;
@@ -197,6 +211,8 @@
       ref: location.href,
       title: parentTitle || document.title || "",
     });
+    const queue = youtubeQueue();
+    if (queue.length > 1) params.set("list", queue.join(","));
     v.pause();
     const a = document.createElement("a");
     a.href = `${SCHEME}?${params}`;
