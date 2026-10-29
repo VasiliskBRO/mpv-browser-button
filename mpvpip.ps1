@@ -1,4 +1,4 @@
-﻿# Обработчик ссылок mpvpip://play?url=<адрес>&start=<секунды>&ref=<страница>&title=<название>&list=<номера роликов YouTube через запятую>&q=<серия>&qt=<её название>...&pos=<какая открыта>
+﻿# Обработчик ссылок mpvpip://play?url=<адрес>&start=<секунды>&ref=<страница>&title=<название>&list=<номера роликов YouTube через запятую>&q=<серия>&qt=<её название>&qv=<качества>...&pos=<какая открыта>
 # Их открывает кнопка «mpv» на видео в браузере. Windows запускает этот файл невидимо (conhost --headless).
 # Принимаются только ссылки http/https: чужой сайт не может передать mpv свои параметры.
 param([string]$Link)
@@ -47,6 +47,12 @@ $queue = @("$($query['list'])" -split ',' | Where-Object { $_ -match '^[\w-]{11}
 # Все серии (AnimeLIB): q=<адрес> и qt=<название> парами, pos — номер открытой сейчас (с нуля).
 $items = @($query.GetValues('q') | Where-Object { $_ } | Select-Object -First 100)
 $itemTitles = @($query.GetValues('qt'))
+# qv — какие ещё качества есть у серии (2160/1080/720…): их переключает меню «Качество» в Prism.
+$itemVariants = @($query.GetValues('qv'))
+function Get-VariantArgs([int]$i) {
+    $v = "$($itemVariants[$i])"
+    if ($v -match '^\d{3,4}(/\d{3,4}){1,9}$') { "--script-opts-append=stream-quality-variants=$v" }
+}
 $pos = 0
 $useItems = $items.Count -gt 1 -and [int]::TryParse("$($query['pos'])", [ref]$pos) -and $pos -ge 0 -and $pos -lt $items.Count -and
     -not ($items | Where-Object { -not (Test-Web $_) })
@@ -59,12 +65,12 @@ if ($queue.Count -gt 1 -and ([uri]$url).Host -match '(^|\.)youtube\.com$') {
     $mpvArgs += "--playlist-start=$pos"
     for ($i = 0; $i -lt $items.Count; $i++) {
         if ($i -eq $pos) {
-            $mpvArgs += @('--{') + $firstArgs + $items[$i] + '--}'
+            $mpvArgs += @('--{') + $firstArgs + @(Get-VariantArgs $i) + $items[$i] + '--}'
             continue
         }
         $t = "$($itemTitles[$i])".Trim()
         if ($t.Length -gt 200) { $t = $t.Substring(0, 200) }
-        $mpvArgs += @('--{') + $(if ($t) { "--force-media-title=$t" }) + $items[$i] + '--}'
+        $mpvArgs += @('--{') + $(if ($t) { "--force-media-title=$t" }) + @(Get-VariantArgs $i) + $items[$i] + '--}'
     }
 } else {
     $mpvArgs += $firstArgs + '--', $url

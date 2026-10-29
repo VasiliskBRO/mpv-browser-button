@@ -2,7 +2,7 @@
 // @name         mpv browser button
 // @name:ru      Кнопка «mpv» на видео
 // @namespace    https://github.com/VasiliskBRO/mpv-browser-button
-// @version      1.8
+// @version      1.9
 // @description  Button on any video: opens it in mpv from the same moment and pauses it in the browser.
 // @description:ru При наведении на видео появляется кнопка: открывает ролик в mpv с того же места, а в браузере ставит на паузу.
 // @homepageURL  https://github.com/VasiliskBRO/mpv-browser-button
@@ -202,20 +202,10 @@
   }
 
   // Свой плеер AnimeLIB (не Kodik): прямые mp4, но играет с 360p.
-  // Через API сайта берём все серии той же озвучки в выбранном качестве.
+  // Через API сайта берём все серии той же озвучки в лучшем качестве и список остальных качеств —
+  // переключает их меню «Качество» в Prism (Alt+Q).
   // Плеер виден только с входом — токен берём там же, где сайт.
   const ANIMELIB_VIDEO = /\/uploads\/converted_videos\/anime\/[^?#]*\/players\/(\d+)\/[^/?#]+\.mp4/;
-
-  // Качество AnimeLIB: 0 — лучшее, иначе не выше выбранного (если такого нет — ближайшее ниже).
-  const QUALITIES = [0, 1080, 720, 480, 360];
-  let quality = Number(GM_getValue("animelibQuality", 0));
-  if (!QUALITIES.includes(quality)) quality = 0;
-  if (window === top && /(^|\.)(animelib\.org|anilib\.me)$/.test(location.hostname)) {
-    GM_registerMenuCommand(`Качество AnimeLIB: ${quality ? `${quality}p` : "лучшее"} (сменить)`, () => {
-      GM_setValue("animelibQuality", QUALITIES[(QUALITIES.indexOf(quality) + 1) % QUALITIES.length]);
-      location.reload();
-    });
-  }
 
   // В Firefox обычный fetch из скрипта идёт не от имени страницы, и сайт может отказать.
   // Тогда повторяем через content.fetch — запрос «как у самой страницы».
@@ -259,8 +249,7 @@
     const server = src.slice(0, src.indexOf("/uploads/converted_videos/"));
     const pick = (p) => {
       const all = [...(p?.video?.quality || [])].sort((a, b) => b.quality - a.quality);
-      const q = (quality && all.find((x) => x.quality <= quality)) || (quality ? all[all.length - 1] : all[0]);
-      return q ? server + q.href : "";
+      return all.length ? { url: server + all[0].href, variants: all.map((x) => x.quality).join("/") } : null;
     };
 
     const episodes = await animelibApi(api, `/api/episodes?anime_id=${encodeURIComponent(slug)}`);
@@ -284,8 +273,8 @@
     const team = current.team?.id;
     const name = document.title.match(/^Аниме (.+?) смотреть онлайн/)?.[1] || document.title;
     const item = (i) => {
-      const url = pick(i === cur ? current : own(details[i]).find((x) => x.team?.id === team));
-      return url ? { url, title: `${name} — серия ${list[i].number}` } : null;
+      const best = pick(i === cur ? current : own(details[i]).find((x) => x.team?.id === team));
+      return best ? { ...best, title: `${name} — серия ${list[i].number}` } : null;
     };
     // Серии подряд в обе стороны, пока у них есть эта озвучка.
     const items = [item(cur)];
@@ -322,7 +311,7 @@
     const queue = youtubeQueue();
     if (queue.length > 1) params.set("list", queue.join(","));
 
-    // AnimeLIB: все серии парами q/qt (адрес и название), pos — какая из них открыта сейчас.
+    // AnimeLIB: все серии тройками q/qt/qv (адрес, название, качества), pos — какая из них открыта сейчас.
     // url/title — та же текущая серия: её одну откроет старый обработчик.
     if (ANIMELIB_VIDEO.test(stream)) {
       try {
@@ -334,6 +323,7 @@
           for (const it of items) {
             params.append("q", it.url);
             params.append("qt", it.title);
+            params.append("qv", it.variants);
           }
           params.set("pos", String(pos));
         }
