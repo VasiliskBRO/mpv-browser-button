@@ -1,4 +1,4 @@
-﻿# Обработчик ссылок mpvpip://play?url=<адрес>&start=<секунды>&ref=<страница>&title=<название>&list=<номера роликов YouTube через запятую>&q=<следующая серия>&qt=<её название>...
+﻿# Обработчик ссылок mpvpip://play?url=<адрес>&start=<секунды>&ref=<страница>&title=<название>&list=<номера роликов YouTube через запятую>&q=<серия>&qt=<её название>...&pos=<какая открыта>
 # Их открывает кнопка «mpv» на видео в браузере. Windows запускает этот файл невидимо (conhost --headless).
 # Принимаются только ссылки http/https: чужой сайт не может передать mpv свои параметры.
 param([string]$Link)
@@ -44,20 +44,27 @@ if ($title) {
 
 # Очередь YouTube: list=<номер>,<номер>,... — берём только настоящие номера роликов (11 знаков).
 $queue = @("$($query['list'])" -split ',' | Where-Object { $_ -match '^[\w-]{11}$' } | Select-Object -Unique -First 500)
-# Следующие серии (AnimeLIB): q=<адрес> и qt=<название> парами, в том же порядке.
-$next = @($query.GetValues('q') | Where-Object { $_ })
-$nextTitles = @($query.GetValues('qt'))
+# Все серии (AnimeLIB): q=<адрес> и qt=<название> парами, pos — номер открытой сейчас (с нуля).
+$items = @($query.GetValues('q') | Where-Object { $_ } | Select-Object -First 100)
+$itemTitles = @($query.GetValues('qt'))
+$pos = 0
+$useItems = $items.Count -gt 1 -and [int]::TryParse("$($query['pos'])", [ref]$pos) -and $pos -ge 0 -and $pos -lt $items.Count -and
+    -not ($items | Where-Object { -not (Test-Web $_) })
 if ($queue.Count -gt 1 -and ([uri]$url).Host -match '(^|\.)youtube\.com$') {
     # --{ ... --} — настройки только для первого ролика; остальные идут следом в плейлист.
     $mpvArgs += @('--{') + $firstArgs + $url + '--}'
     $mpvArgs += $queue | Select-Object -Skip 1 | ForEach-Object { "https://www.youtube.com/watch?v=$_" }
-} elseif ($next.Count -gt 0) {
-    $mpvArgs += @('--{') + $firstArgs + $url + '--}'
-    for ($i = 0; $i -lt [Math]::Min($next.Count, 100); $i++) {
-        if (-not (Test-Web $next[$i])) { break }
-        $t = "$($nextTitles[$i])".Trim()
+} elseif ($useItems) {
+    # Время и название из firstArgs — только у открытой серии, плейлист начинается с неё.
+    $mpvArgs += "--playlist-start=$pos"
+    for ($i = 0; $i -lt $items.Count; $i++) {
+        if ($i -eq $pos) {
+            $mpvArgs += @('--{') + $firstArgs + $items[$i] + '--}'
+            continue
+        }
+        $t = "$($itemTitles[$i])".Trim()
         if ($t.Length -gt 200) { $t = $t.Substring(0, 200) }
-        $mpvArgs += @('--{') + $(if ($t) { "--force-media-title=$t" }) + $next[$i] + '--}'
+        $mpvArgs += @('--{') + $(if ($t) { "--force-media-title=$t" }) + $items[$i] + '--}'
     }
 } else {
     $mpvArgs += $firstArgs + '--', $url
