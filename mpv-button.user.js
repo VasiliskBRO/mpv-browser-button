@@ -2,7 +2,7 @@
 // @name         mpv browser button
 // @name:ru      Кнопка «mpv» на видео
 // @namespace    https://github.com/VasiliskBRO/mpv-browser-button
-// @version      1.5
+// @version      1.6
 // @description  Button on any video: opens it in mpv from the same moment and pauses it in the browser.
 // @description:ru При наведении на видео появляется кнопка: открывает ролик в mpv с того же места, а в браузере ставит на паузу.
 // @homepageURL  https://github.com/VasiliskBRO/mpv-browser-button
@@ -171,8 +171,10 @@
     });
   }
 
-  // Сайты, которые yt-dlp понимает по адресу страницы (там выйдет лучше качество).
-  const YTDL_HOSTS = /(^|\.)(youtube\.com|youtu\.be|twitch\.tv|kick\.com|vk\.com|vkvideo\.ru|rutube\.ru|vimeo\.com|dailymotion\.com|ok\.ru|bilibili\.com|tiktok\.com|x\.com|twitter\.com|reddit\.com)$/;
+  // Сайты, которые mpv понимает по адресу страницы (yt-dlp или streamlink — там выйдет лучше качество).
+  const YTDL_HOSTS = /(^|\.)(youtube\.com|youtu\.be|twitch\.tv|kick\.com|goodgame\.ru|vk\.com|vkvideo\.ru|rutube\.ru|vimeo\.com|dailymotion\.com|ok\.ru|bilibili\.com|tiktok\.com|x\.com|twitter\.com|reddit\.com)$/;
+  // Сайты только с прямыми эфирами, где плеер всё равно показывает конечную длину.
+  const LIVE_HOSTS = /(^|\.)goodgame\.ru$/;
 
   // Прямая ссылка на то, что плеер реально играет: файл или список кусков HLS/DASH.
   function streamUrl(v) {
@@ -203,7 +205,7 @@
     const v = target;
     if (!v) return;
     // У прямых эфиров длина бесконечная — там время не передаём.
-    const start = Number.isFinite(v.duration) ? Math.floor(v.currentTime) : 0;
+    const start = Number.isFinite(v.duration) && !LIVE_HOSTS.test(location.hostname) ? Math.floor(v.currentTime) : 0;
     const stream = YTDL_HOSTS.test(location.hostname) ? "" : streamUrl(v);
     const params = new URLSearchParams({
       url: stream || location.href,
