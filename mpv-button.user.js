@@ -2,7 +2,7 @@
 // @name         mpv browser button
 // @name:ru      Кнопка «mpv» на видео
 // @namespace    https://github.com/VasiliskBRO/mpv-browser-button
-// @version      1.7
+// @version      1.7.1
 // @description  Button on any video: opens it in mpv from the same moment and pauses it in the browser.
 // @description:ru При наведении на видео появляется кнопка: открывает ролик в mpv с того же места, а в браузере ставит на паузу.
 // @homepageURL  https://github.com/VasiliskBRO/mpv-browser-button
@@ -206,21 +206,42 @@
   // Плеер виден только с входом — токен берём там же, где сайт.
   const ANIMELIB_VIDEO = /\/uploads\/converted_videos\/anime\/[^?#]*\/players\/(\d+)\/[^/?#]+\.mp4/;
 
+  // В Firefox обычный fetch из скрипта идёт не от имени страницы, и сайт может отказать.
+  // Тогда повторяем через content.fetch — запрос «как у самой страницы».
+  async function pageFetch(url, headers) {
+    let error;
+    try {
+      const r = await fetch(url, { headers });
+      if (r.ok) return await r.text();
+      error = `fetch ${r.status}`;
+    } catch (e) {
+      error = `fetch ${e}`;
+    }
+    if (typeof content !== "undefined" && content.fetch) {
+      const init = typeof cloneInto === "function" ? cloneInto({ headers }, content) : { headers };
+      const r = await content.fetch(url, init);
+      if (r.ok) return await r.text();
+      error += `, content.fetch ${r.status}`;
+    }
+    throw new Error(error);
+  }
+
   async function animelibApi(api, path) {
     const headers = { "Site-Id": "5" };
     try {
       const token = JSON.parse(localStorage.getItem("auth") || "{}").token?.access_token;
       if (token) headers.Authorization = `Bearer ${token}`;
     } catch {}
-    const r = await fetch(api + path, { headers });
-    if (!r.ok) throw new Error(`${path}: ${r.status}`);
-    return (await r.json()).data;
+    return JSON.parse(await pageFetch(api + path, headers)).data;
   }
+
+  // Почему не вышло — в консоль (F12), чтобы было что прислать.
+  const giveUp = (why) => (console.warn("mpv button: AnimeLIB —", why), null);
 
   async function animelibQueue(src) {
     const m = src.match(ANIMELIB_VIDEO);
     const slug = location.pathname.match(/\/anime\/([^/]+)\/watch/)?.[1];
-    if (!m || !slug) return null;
+    if (!m || !slug) return giveUp(`не узнал видео или адрес: ${src} ${location.pathname}`);
     // Адрес API подсматриваем у самой страницы (у зеркал он может отличаться).
     const seen = performance.getEntriesByType("resource").map((e) => e.name).find((n) => /\/api\/episodes\b/.test(n));
     const api = seen ? seen.slice(0, seen.indexOf("/api/")) : "https://hapi.hentaicdn.org";
@@ -233,14 +254,14 @@
     const episodes = await animelibApi(api, `/api/episodes?anime_id=${encodeURIComponent(slug)}`);
     const id = Number(new URLSearchParams(location.search).get("episode"));
     const from = episodes.findIndex((e) => e.id === id);
-    if (from < 0) return null;
+    if (from < 0) return giveUp(`серии ${id} нет в списке из ${episodes.length}`);
     // Подряд, но не больше 100 серий — иначе слишком длинная команда для mpv.
     const list = episodes.slice(from, from + 100);
     const details = await Promise.all(list.map((e) => animelibApi(api, `/api/episodes/${e.id}`).catch(() => null)));
 
     const own = (d) => (d?.players || []).filter((p) => p.player === "Animelib" && p.video);
     const current = own(details[0]).find((p) => String(p.video.id) === m[1]);
-    if (!current) return null;
+    if (!current) return giveUp(`видео ${m[1]} не найдено у серии (ответ: ${details[0] ? "есть" : "нет"})`);
     const team = current.team?.id;
     const name = document.title.match(/^Аниме (.+?) смотреть онлайн/)?.[1] || document.title;
     const items = [];
