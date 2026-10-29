@@ -19,7 +19,7 @@
 1. Скачай репозиторий (Code → Download ZIP) и распакуй.
 2. Правой кнопкой по `install.ps1` → **«Выполнить с помощью PowerShell»**. Он найдёт mpv (если нет — спросит путь) и научит Windows открывать ссылки `mpvpip://`.
 3. Поставь в браузер **Violentmonkey** ([Firefox](https://addons.mozilla.org/firefox/addon/violentmonkey/) · [Chrome/Edge](https://chromewebstore.google.com/detail/violentmonkey/jinjaccalgkegednnccohejagnlnfdag)).
-4. Открой **[mpv-button.user.js](https://raw.githubusercontent.com/VasiliskBRO/mpv-browser-button/master/mpv-button.user.js)** → «Установить». Дальше скрипт обновляется сам.
+4. Открой **[mpv-button.user.js](https://raw.githubusercontent.com/VasiliskBRO/mpv-browser-button/master/mpv-button.user.js)** → «Установить». Дальше скрипт обновляется сам, а обработчик — нет: после обновления репо запусти `install.ps1` ещё раз (нужно для очереди серий AnimeLIB).
 5. Наведи мышь на видео → «⏵ mpv». В первый раз браузер спросит, можно ли открыть ссылку `mpvpip` — поставь «Всегда».
 
 ### Linux (бета)
