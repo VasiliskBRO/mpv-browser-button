@@ -2,7 +2,7 @@
 // @name         mpv browser button
 // @name:ru      Кнопка «mpv» на видео
 // @namespace    https://github.com/VasiliskBRO/mpv-browser-button
-// @version      1.4
+// @version      1.6
 // @description  Button on any video: opens it in mpv from the same moment and pauses it in the browser.
 // @description:ru При наведении на видео появляется кнопка: открывает ролик в mpv с того же места, а в браузере ставит на паузу.
 // @homepageURL  https://github.com/VasiliskBRO/mpv-browser-button
@@ -171,8 +171,10 @@
     });
   }
 
-  // Сайты, которые yt-dlp понимает по адресу страницы (там выйдет лучше качество).
-  const YTDL_HOSTS = /(^|\.)(youtube\.com|youtu\.be|twitch\.tv|kick\.com|vk\.com|vkvideo\.ru|rutube\.ru|vimeo\.com|dailymotion\.com|ok\.ru|bilibili\.com|tiktok\.com|x\.com|twitter\.com|reddit\.com)$/;
+  // Сайты, которые mpv понимает по адресу страницы (yt-dlp или streamlink — там выйдет лучше качество).
+  const YTDL_HOSTS = /(^|\.)(youtube\.com|youtu\.be|twitch\.tv|kick\.com|goodgame\.ru|vk\.com|vkvideo\.ru|rutube\.ru|vimeo\.com|dailymotion\.com|ok\.ru|bilibili\.com|tiktok\.com|x\.com|twitter\.com|reddit\.com)$/;
+  // Сайты только с прямыми эфирами, где плеер всё равно показывает конечную длину.
+  const LIVE_HOSTS = /(^|\.)goodgame\.ru$/;
 
   // Прямая ссылка на то, что плеер реально играет: файл или список кусков HLS/DASH.
   function streamUrl(v) {
@@ -185,11 +187,25 @@
     return manifests.length ? manifests[manifests.length - 1] : "";
   }
 
+  // Очередь или плейлист YouTube из боковой панели: номера роликов от текущего до конца.
+  // Очередь живёт только в браузере, yt-dlp её не видит — поэтому передаём номера сами.
+  function youtubeQueue() {
+    if (!/(^|\.)youtube\.com$/.test(location.hostname)) return [];
+    const current = new URLSearchParams(location.search).get("v");
+    const ids = [];
+    for (const a of document.querySelectorAll("ytd-watch-flexy ytd-playlist-panel-video-renderer a#wc-endpoint")) {
+      const id = new URL(a.href, location.href).searchParams.get("v");
+      if (/^[\w-]{11}$/.test(id || "") && !ids.includes(id)) ids.push(id);
+    }
+    const from = ids.indexOf(current);
+    return from < 0 ? [] : ids.slice(from, from + 500);
+  }
+
   function openInMpv() {
     const v = target;
     if (!v) return;
     // У прямых эфиров длина бесконечная — там время не передаём.
-    const start = Number.isFinite(v.duration) ? Math.floor(v.currentTime) : 0;
+    const start = Number.isFinite(v.duration) && !LIVE_HOSTS.test(location.hostname) ? Math.floor(v.currentTime) : 0;
     const stream = YTDL_HOSTS.test(location.hostname) ? "" : streamUrl(v);
     const params = new URLSearchParams({
       url: stream || location.href,
@@ -197,6 +213,8 @@
       ref: location.href,
       title: parentTitle || document.title || "",
     });
+    const queue = youtubeQueue();
+    if (queue.length > 1) params.set("list", queue.join(","));
     v.pause();
     const a = document.createElement("a");
     a.href = `${SCHEME}?${params}`;

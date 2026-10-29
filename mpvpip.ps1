@@ -1,4 +1,4 @@
-﻿# Обработчик ссылок mpvpip://play?url=<адрес>&start=<секунды>&ref=<страница>&title=<название>
+﻿# Обработчик ссылок mpvpip://play?url=<адрес>&start=<секунды>&ref=<страница>&title=<название>&list=<номера роликов YouTube через запятую>
 # Их открывает кнопка «mpv» на видео в браузере. Windows запускает этот файл невидимо (conhost --headless).
 # Принимаются только ссылки http/https: чужой сайт не может передать mpv свои параметры.
 param([string]$Link)
@@ -28,17 +28,29 @@ if ($url -match $kodik) {
 }
 
 $mpvArgs = @($config.args)
+if (Test-Web $query['ref']) { $mpvArgs += "--referrer=$($query['ref'])" }
+
+# Время и название относятся только к первому ролику.
+$firstArgs = @()
 $start = 0.0
 if ([double]::TryParse($query['start'], [Globalization.NumberStyles]::Float, [Globalization.CultureInfo]::InvariantCulture, [ref]$start) -and $start -gt 1) {
-    $mpvArgs += '--start=' + $start.ToString('0.0', [Globalization.CultureInfo]::InvariantCulture)
+    $firstArgs += '--start=' + $start.ToString('0.0', [Globalization.CultureInfo]::InvariantCulture)
 }
-if (Test-Web $query['ref']) { $mpvArgs += "--referrer=$($query['ref'])" }
 $title = "$($query['title'])".Trim()
 if ($title) {
     if ($title.Length -gt 200) { $title = $title.Substring(0, 200) }
-    $mpvArgs += "--force-media-title=$title"
+    $firstArgs += "--force-media-title=$title"
 }
-$mpvArgs += '--', $url
+
+# Очередь YouTube: list=<номер>,<номер>,... — берём только настоящие номера роликов (11 знаков).
+$queue = @("$($query['list'])" -split ',' | Where-Object { $_ -match '^[\w-]{11}$' } | Select-Object -Unique -First 500)
+if ($queue.Count -gt 1 -and ([uri]$url).Host -match '(^|\.)youtube\.com$') {
+    # --{ ... --} — настройки только для первого ролика; остальные идут следом в плейлист.
+    $mpvArgs += @('--{') + $firstArgs + $url + '--}'
+    $mpvArgs += $queue | Select-Object -Skip 1 | ForEach-Object { "https://www.youtube.com/watch?v=$_" }
+} else {
+    $mpvArgs += $firstArgs + '--', $url
+}
 
 # Кавычки для командной строки Windows (кавычки внутри значений экранируем).
 $line = ($mpvArgs | ForEach-Object { '"' + ($_ -replace '(\\*)"', '$1$1\"' -replace '(\\+)$', '$1$1') + '"' }) -join ' '
