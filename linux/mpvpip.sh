@@ -38,15 +38,18 @@ is_web() { [[ "$1" =~ ^https?:// ]]; }
 is_web "$url" || exit 0
 
 # Kodik (animelib и др.): плеер часто начинает с 360p, а на сервере есть лучше.
-kodik='/[0-9]{3,4}\.mp4:hls:manifest\.m3u8'
+# Открываем лучшее, а все найденные качества передаём в Prism — их переключает меню «Качество» (Alt+Q).
+kodik='/([0-9]{3,4})\.mp4:hls:manifest\.m3u8'
+variants=()
 if [[ "$url" =~ $kodik ]] && command -v curl >/dev/null; then
-    for q in 1080 720 480; do
+    playing="${BASH_REMATCH[1]}"
+    for q in 1080 720 480 360; do
         candidate="$(sed -E "s#$kodik#/$q.mp4:hls:manifest.m3u8#" <<< "$url")"
-        if curl -sfIL --max-time 4 -o /dev/null "$candidate"; then
-            url="$candidate"
-            break
+        if [ "$q" = "$playing" ] || curl -sfIL --max-time 4 -o /dev/null "$candidate"; then
+            variants+=("$q")
         fi
     done
+    url="$(sed -E "s#$kodik#/${variants[0]}.mp4:hls:manifest.m3u8#" <<< "$url")"
 fi
 
 args=("${ARGS[@]}")
@@ -56,6 +59,9 @@ fi
 is_web "$ref" && args+=("--referrer=$ref")
 title="${title:0:200}"
 [ -n "$title" ] && args+=("--force-media-title=$title")
+if [ "${#variants[@]}" -gt 1 ]; then
+    args+=("--script-opts-append=stream-quality-variants=$(IFS=/; echo "${variants[*]}")")
+fi
 
 # Отвязываем mpv от браузера, чтобы он не закрылся вместе с ним.
 if command -v setsid >/dev/null; then

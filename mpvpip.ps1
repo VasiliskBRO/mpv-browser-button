@@ -15,16 +15,23 @@ $url = $query['url']
 if (-not (Test-Web $url)) { exit }
 
 # Kodik (animelib и др.): плеер часто начинает с 360p, а на сервере есть лучше.
+# Открываем лучшее, а все найденные качества передаём в Prism — их переключает меню «Качество» (Alt+Q).
 $kodik = '/(\d{3,4})\.mp4:hls:manifest\.m3u8'
+$kodikVariants = @()
 if ($url -match $kodik) {
-    foreach ($q in '1080', '720', '480') {
+    $playing = $Matches[1]
+    foreach ($q in '1080', '720', '480', '360') {
         $candidate = $url -replace $kodik, "/$q.mp4:hls:manifest.m3u8"
-        try {
-            Invoke-WebRequest -Uri $candidate -Method Head -UseBasicParsing -TimeoutSec 4 | Out-Null
-            $url = $candidate
-            break
-        } catch { }
+        $ok = $q -eq $playing
+        if (-not $ok) {
+            try {
+                Invoke-WebRequest -Uri $candidate -Method Head -UseBasicParsing -TimeoutSec 4 | Out-Null
+                $ok = $true
+            } catch { }
+        }
+        if ($ok) { $kodikVariants += $q }
     }
+    if ($kodikVariants) { $url = $url -replace $kodik, "/$($kodikVariants[0]).mp4:hls:manifest.m3u8" }
 }
 
 $mpvArgs = @($config.args)
@@ -41,6 +48,7 @@ if ($title) {
     if ($title.Length -gt 200) { $title = $title.Substring(0, 200) }
     $firstArgs += "--force-media-title=$title"
 }
+if ($kodikVariants.Count -gt 1) { $firstArgs += "--script-opts-append=stream-quality-variants=$($kodikVariants -join '/')" }
 
 # Очередь YouTube: list=<номер>,<номер>,... — берём только настоящие номера роликов (11 знаков).
 $queue = @("$($query['list'])" -split ',' | Where-Object { $_ -match '^[\w-]{11}$' } | Select-Object -Unique -First 500)
