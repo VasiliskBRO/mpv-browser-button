@@ -5,6 +5,7 @@
 - YouTube, Twitch, VK, Rutube и другие — через yt-dlp, в лучшем качестве.
 - Эфиры GoodGame — по адресу канала, всегда с текущего момента (в [Prism](https://github.com/VasiliskBRO/mpv-prism) их открывает streamlink).
 - Сайты, которых yt-dlp не знает (например, плееры Kodik на аниме-сайтах), — по прямой ссылке на поток; у Kodik качество само поднимается до лучшего.
+- AnimeLIB, свой плеер сайта (виден после входа): в mpv уходят плейлистом все серии той же озвучки, старт — с открытой серии и с той же секунды. Открывается лучшее качество; с оболочкой [Prism](https://github.com/VasiliskBRO/mpv-prism) его можно сменить прямо в mpv (`Alt+Q`), как на YouTube. Windows; Linux-версия пока открывает одну серию.
 - Название ролика попадает в заголовок mpv, даже если плеер встроен в чужое окошко.
 - Работает в Firefox, Chrome, Edge — везде, где есть Violentmonkey или Tampermonkey.
 - **Windows** — проверено. **Linux** — бета (написано и проверено по частям, на живом Linux с браузером ещё не гоняли — отпишитесь в Issues, как у вас). macOS пока нет.
@@ -18,7 +19,7 @@
 1. Скачай репозиторий (Code → Download ZIP) и распакуй.
 2. Правой кнопкой по `install.ps1` → **«Выполнить с помощью PowerShell»**. Он найдёт mpv (если нет — спросит путь) и научит Windows открывать ссылки `mpvpip://`.
 3. Поставь в браузер **Violentmonkey** ([Firefox](https://addons.mozilla.org/firefox/addon/violentmonkey/) · [Chrome/Edge](https://chromewebstore.google.com/detail/violentmonkey/jinjaccalgkegednnccohejagnlnfdag)).
-4. Открой **[mpv-button.user.js](https://raw.githubusercontent.com/VasiliskBRO/mpv-browser-button/master/mpv-button.user.js)** → «Установить». Дальше скрипт обновляется сам.
+4. Открой **[mpv-button.user.js](https://raw.githubusercontent.com/VasiliskBRO/mpv-browser-button/master/mpv-button.user.js)** → «Установить». Дальше скрипт обновляется сам, а обработчик — нет: после обновления репо запусти `install.ps1` ещё раз (нужно для очереди серий AnimeLIB).
 5. Наведи мышь на видео → «⏵ mpv». В первый раз браузер спросит, можно ли открыть ссылку `mpvpip` — поставь «Всегда».
 
 ### Linux (бета)
