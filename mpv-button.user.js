@@ -2,7 +2,7 @@
 // @name         mpv browser button
 // @name:ru      Кнопка «mpv» на видео
 // @namespace    https://github.com/VasiliskBRO/mpv-browser-button
-// @version      1.6
+// @version      1.7
 // @description  Button on any video: opens it in mpv from the same moment and pauses it in the browser.
 // @description:ru При наведении на видео появляется кнопка: открывает ролик в mpv с того же места, а в браузере ставит на паузу.
 // @homepageURL  https://github.com/VasiliskBRO/mpv-browser-button
@@ -201,9 +201,63 @@
     return from < 0 ? [] : ids.slice(from, from + 500);
   }
 
-  function openInMpv() {
+  // Свой плеер AnimeLIB (не Kodik): прямые mp4, но играет с 360p.
+  // Через API сайта берём лучшее качество этой серии и следующие серии той же озвучки.
+  // Плеер виден только с входом — токен берём там же, где сайт.
+  const ANIMELIB_VIDEO = /\/uploads\/converted_videos\/anime\/[^?#]*\/players\/(\d+)\/[^/?#]+\.mp4/;
+
+  async function animelibApi(api, path) {
+    const headers = { "Site-Id": "5" };
+    try {
+      const token = JSON.parse(localStorage.getItem("auth") || "{}").token?.access_token;
+      if (token) headers.Authorization = `Bearer ${token}`;
+    } catch {}
+    const r = await fetch(api + path, { headers });
+    if (!r.ok) throw new Error(`${path}: ${r.status}`);
+    return (await r.json()).data;
+  }
+
+  async function animelibQueue(src) {
+    const m = src.match(ANIMELIB_VIDEO);
+    const slug = location.pathname.match(/\/anime\/([^/]+)\/watch/)?.[1];
+    if (!m || !slug) return null;
+    // Адрес API подсматриваем у самой страницы (у зеркал он может отличаться).
+    const seen = performance.getEntriesByType("resource").map((e) => e.name).find((n) => /\/api\/episodes\b/.test(n));
+    const api = seen ? seen.slice(0, seen.indexOf("/api/")) : "https://hapi.hentaicdn.org";
+    const server = src.slice(0, src.indexOf("/uploads/converted_videos/"));
+    const best = (p) => {
+      const q = [...(p?.video?.quality || [])].sort((a, b) => b.quality - a.quality)[0];
+      return q ? server + q.href : "";
+    };
+
+    const episodes = await animelibApi(api, `/api/episodes?anime_id=${encodeURIComponent(slug)}`);
+    const id = Number(new URLSearchParams(location.search).get("episode"));
+    const from = episodes.findIndex((e) => e.id === id);
+    if (from < 0) return null;
+    // Подряд, но не больше 100 серий — иначе слишком длинная команда для mpv.
+    const list = episodes.slice(from, from + 100);
+    const details = await Promise.all(list.map((e) => animelibApi(api, `/api/episodes/${e.id}`).catch(() => null)));
+
+    const own = (d) => (d?.players || []).filter((p) => p.player === "Animelib" && p.video);
+    const current = own(details[0]).find((p) => String(p.video.id) === m[1]);
+    if (!current) return null;
+    const team = current.team?.id;
+    const name = document.title.match(/^Аниме (.+?) смотреть онлайн/)?.[1] || document.title;
+    const items = [];
+    for (const [i, d] of details.entries()) {
+      const p = i === 0 ? current : own(d).find((x) => x.team?.id === team);
+      const url = best(p);
+      if (!url) break; // у этой серии нет такой озвучки — дальше не идём
+      items.push({ url, title: `${name} — серия ${list[i].number}` });
+    }
+    return items.length ? items : null;
+  }
+
+  async function openInMpv() {
     const v = target;
     if (!v) return;
+    v.pause();
+    hide();
     // У прямых эфиров длина бесконечная — там время не передаём.
     const start = Number.isFinite(v.duration) && !LIVE_HOSTS.test(location.hostname) ? Math.floor(v.currentTime) : 0;
     const stream = YTDL_HOSTS.test(location.hostname) ? "" : streamUrl(v);
@@ -215,11 +269,27 @@
     });
     const queue = youtubeQueue();
     if (queue.length > 1) params.set("list", queue.join(","));
-    v.pause();
+
+    // AnimeLIB: первая серия — в лучшем качестве, следующие — парами q/qt (адрес и название).
+    if (ANIMELIB_VIDEO.test(stream)) {
+      try {
+        const items = await animelibQueue(stream);
+        if (items) {
+          params.set("url", items[0].url);
+          params.set("title", items[0].title);
+          for (const it of items.slice(1)) {
+            params.append("q", it.url);
+            params.append("qt", it.title);
+          }
+        }
+      } catch (e) {
+        console.warn("mpv button: AnimeLIB", e);
+      }
+    }
+
     const a = document.createElement("a");
     a.href = `${SCHEME}?${params}`;
     a.click();
-    hide();
   }
 
   // Клик не должен доходить до плеера сайта (иначе он сам снимет паузу).
